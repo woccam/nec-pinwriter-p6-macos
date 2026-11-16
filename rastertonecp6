@@ -145,7 +145,7 @@ while (1) {
         # Graustufen selbst rastern (Bayer 8x8) mit Punktzuwachs-Korrektur:
         # gewuenschte Schwaerzung f -> Punktanteil d = 1 - (1-f)^(1/k)
         my $white_is_high = ($cspace == 18 || $cspace == 0 || $cspace == 1);
-        my $k = ($xres >= 360 && $yres >= 360) ? 3.5 : ($xres >= 360 || $yres >= 360) ? 2.0 : 1.0;
+        my $k = ($xres >= 360 && $yres >= 360) ? 7.0 : ($xres >= 360 || $yres >= 360) ? 3.5 : 1.0;   # am NEC P6 Plus gemessen
         my %gf = (Light => 1.4, Normal => 1.0, Dark => 0.7);
         $k *= $gf{$gray} || 1.0;
         $k = 1.0 if $k < 1.0;

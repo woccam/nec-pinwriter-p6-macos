@@ -3,7 +3,7 @@
 ## 1.4.0 – 2026-11-16
 - 360 dpi modes: own grey-level dithering (Bayer 8x8) with dot-gain correction – grey areas no longer turn black
 - New option "Graustufen" (lighter / normal / darker) for 360 dpi
-- 360 dpi tested on real hardware (bidirectional OK)
+- 360 dpi tested on real hardware (bidirectional OK); dot-gain curve calibrated from scans of a NEC P6 Plus
 - One-line installation (no download/unzip), step-by-step README
 - Installer messages in English
 
