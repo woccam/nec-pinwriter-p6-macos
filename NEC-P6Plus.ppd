@@ -43,11 +43,11 @@
 *CloseUI: *PageRegion
 
 *DefaultImageableArea: A4
-*ImageableArea A4: "0 24 576 842"
-*ImageableArea Letter: "0 24 576 792"
-*ImageableArea Fanfold12: "0 0 576 864"
+*ImageableArea A4: "0 0 595 842"
+*ImageableArea Letter: "0 0 612 792"
+*ImageableArea Fanfold12: "0 0 612 864"
 *ImageableArea Fanfold240: "0 0 576 864"
-*ImageableArea Fanfold11: "0 0 576 792"
+*ImageableArea Fanfold11: "0 0 612 792"
 
 *DefaultPaperDimension: A4
 *PaperDimension A4: "595 842"
