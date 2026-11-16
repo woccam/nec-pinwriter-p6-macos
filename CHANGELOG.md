@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- One-line installation (no download/unzip), step-by-step README
+- Installer messages in English
+
 ## 1.3.0 – 2026-11-16
 - Selectable print quality: 180×180, 360×180, 360×360 dpi
 - Filter ~8× faster (table-based bit transposition)

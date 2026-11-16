@@ -21,22 +21,36 @@ plus a PPD file.
   A network print server with a parallel port also works (`socket://IP:9100`).
 - Printer in its standard (NEC/ESC-P compatible) emulation, not IBM Proprinter
 
-## Installation
-1. Download `nec-pinwriter-p6-macos-1.3.0.zip` from the latest
-   [Release](../../releases/latest) (e.g. into `~/Downloads`).
-2. In Terminal:
+## Installation (step by step)
+
+You need: the printer connected via a **USB-to-parallel adapter** and switched on,
+and the password you use to log in to your Mac.
+
+1. **Open Terminal.** Press `Cmd ⌘ + Space`, type `Terminal`, press `Return`.
+2. **Copy this whole line**, paste it into Terminal (`Cmd ⌘ + V`) and press `Return`:
    ```
-   cd ~/Downloads && unzip -o nec-pinwriter-p6-macos-1.3.0.zip
-   cd nec-pinwriter-p6-macos-1.3.0 && sudo bash install.sh
+   cd /tmp && curl -fsSL https://github.com/woccam/nec-pinwriter-p6-macos/archive/refs/heads/main.tar.gz | tar xz && cd nec-pinwriter-p6-macos-main && sudo bash install.sh
    ```
-3. Pick the `usb://…` entry from the list. Test page:
+   This downloads the driver and starts the installer – nothing else to download or unzip.
+3. **Enter your Mac password** when asked and press `Return`.
+   You will **not see any characters** while typing – that is normal.
+4. A numbered list of printer ports appears. **Type the number of the line that
+   starts with `usb://`** and press `Return`.
+   No `usb://` line? Switch the printer on, check the adapter cable, and repeat step 2.
+5. Done – you will see `Done. Printer 'NEC Pinwriter P6 Plus' set up on usb://…`
+   Print a test page by pasting this and pressing `Return`:
    ```
-   lp -d NEC_P6_Plus testseite.pdf
+   lp -d NEC_P6_Plus /tmp/nec-pinwriter-p6-macos-main/testseite.pdf
    ```
-Running `sudo bash install.sh` again updates an existing installation without questions.
+
+From now on the printer appears as **NEC Pinwriter P6 Plus** in every app's print dialog.
+
+**Updating** to a newer version: simply repeat step 2. Existing settings are kept,
+no questions asked.
 
 ## Settings
-In the print dialog open **Options → Printer Options (ⓘ)**:
+In the print dialog scroll down to **Options → Printer Options** and click the
+**ⓘ** button on the right:
 *Print quality*, *Page end*, *Print direction*, *Horizontal offset*.
 For 360×360 dpi, unidirectional printing gives the cleanest result.
 
@@ -46,8 +60,9 @@ lpadmin -p NEC_P6_Plus -o Resolution=360dpi -o NECDirection=Uni
 ```
 
 ## Uninstall
+Paste into Terminal and press `Return`:
 ```
-sudo bash uninstall.sh
+cd /tmp && curl -fsSL https://github.com/woccam/nec-pinwriter-p6-macos/archive/refs/heads/main.tar.gz | tar xz && sudo bash nec-pinwriter-p6-macos-main/uninstall.sh
 ```
 
 ## Troubleshooting
@@ -92,25 +107,31 @@ Ghostscript, kein Homebrew, kein Xcode nötig.
   Netzwerk-Printserver mit Parallelport
 - Drucker in Standard-Emulation (NEC/ESC-P), nicht IBM-Proprinter
 
-## Installation
-1. `nec-pinwriter-p6-macos-1.3.0.zip` aus dem neuesten
-   [Release](../../releases/latest) herunterladen.
-2. Im Terminal:
-   ```
-   cd ~/Downloads && unzip -o nec-pinwriter-p6-macos-1.3.0.zip
-   cd nec-pinwriter-p6-macos-1.3.0 && sudo bash install.sh
-   ```
-3. Den `usb://…`-Eintrag wählen. Testseite: `lp -d NEC_P6_Plus testseite.pdf`
+## Installation (Schritt für Schritt)
 
-Erneutes Ausführen von `sudo bash install.sh` aktualisiert eine bestehende Installation.
+Voraussetzung: Drucker über **USB-Parallel-Adapter** angeschlossen und eingeschaltet,
+und dein Mac-Anmeldepasswort.
+
+1. **Terminal öffnen:** `Cmd ⌘ + Leertaste`, `Terminal` tippen, `Return`.
+2. **Diese ganze Zeile kopieren**, ins Terminal einfügen (`Cmd ⌘ + V`), `Return`:
+   ```
+   cd /tmp && curl -fsSL https://github.com/woccam/nec-pinwriter-p6-macos/archive/refs/heads/main.tar.gz | tar xz && cd nec-pinwriter-p6-macos-main && sudo bash install.sh
+   ```
+   Das lädt den Treiber und startet die Installation – nichts herunterladen oder entpacken.
+3. **Mac-Passwort eingeben** und `Return`. Beim Tippen erscheinen **keine Zeichen** – das ist normal.
+4. Es erscheint eine nummerierte Liste. **Die Nummer der Zeile mit `usb://` eintippen**, `Return`.
+   Keine `usb://`-Zeile? Drucker einschalten, Adapter prüfen, Schritt 2 wiederholen.
+5. Fertig. Testseite: `lp -d NEC_P6_Plus /tmp/nec-pinwriter-p6-macos-main/testseite.pdf`
+
+**Update:** einfach Schritt 2 wiederholen.
 
 ## Einstellungen
-Im Drucken-Dialog: **Optionen → Druckeroptionen (ⓘ)** – Druckqualität,
+Im Drucken-Dialog nach unten zu **Optionen → Druckeroptionen** scrollen und rechts auf **ⓘ** klicken – Druckqualität,
 Seitenende, Druckrichtung, horizontaler Versatz. Für 360×360 dpi
 „Unidirektional" wählen.
 
 ## Deinstallation
-`sudo bash uninstall.sh`
+Schritt 2 mit `uninstall.sh` statt `install.sh`
 
 ## Lizenz
 AGPL-3.0-or-later. Die 360-dpi-Logik folgt dem Ghostscript-Treiber `necp6`.
