@@ -1,0 +1,261 @@
+#!/usr/bin/perl
+#
+# rastertonecp6 - CUPS-Filter fuer NEC Pinwriter P6 / P6 Plus (24 Nadeln)
+#
+# Liest CUPS-Raster (v1/v2/v3, beide Byte-Reihenfolgen) und erzeugt
+# ESC/P-kompatible 24-Nadel-Grafik (ESC * 39, 180 x 180 dpi).
+#
+# Aufruf durch CUPS:  rastertonecp6 job user title copies options [file]
+#
+# Copyright (C) 2026 The nec-pinwriter-p6-macos contributors
+# The 360 dpi output logic (interleaved passes, adjacent-dot handling)
+# follows Ghostscript's necp6 driver (devices/gdevdm24.c, Andreas Schwab),
+# Copyright (C) Artifex Software, Inc., licensed under AGPL-3.0-or-later.
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version. See LICENSE.
+#
+use strict;
+use warnings;
+
+$| = 1;
+binmode STDOUT;
+
+my $MAXDOTS = 1440;            # 8 Zoll Druckbreite @ 180 dpi
+my ($job, $user, $title, $copies, $options, $file) = @ARGV;
+$options = '' unless defined $options;
+
+sub logmsg { print STDERR "$_[0]: rastertonecp6: $_[1]\n"; }
+
+# ---- Optionen aus der Jobzeile -------------------------------------------
+my %opt;
+# Standardwerte aus der PPD des Druckers (CUPS setzt $PPD)
+if ($ENV{PPD} && open(my $ppd, '<', $ENV{PPD})) {
+    while (<$ppd>) { $opt{$1} = $2 if /^\*Default(NEC\w+):\s*(\S+)/; }
+    close $ppd;
+}
+for my $kv (split /\s+/, $options) {
+    my ($k, $v) = split /=/, $kv, 2;
+    $opt{$k} = defined $v ? $v : 'true';
+}
+my $hoff_mm   = 0;
+if (defined $opt{NECHOffset} && $opt{NECHOffset} =~ /^(m?)(\d+)mm$/) {
+    $hoff_mm = ($1 ? -1 : 1) * $2;
+}
+my $eject     = defined $opt{NECEject} ? $opt{NECEject} : 'Feed';
+my $unidir    = (defined $opt{NECDirection} && $opt{NECDirection} eq 'Uni') ? 1 : 0;
+
+# ---- Eingabe -------------------------------------------------------------
+my $in;
+if (defined $file && length $file) {
+    open($in, '<', $file) or do { logmsg('ERROR', "Kann $file nicht oeffnen: $!"); exit 1; };
+} else {
+    $in = \*STDIN;
+}
+binmode $in;
+
+sub readn {
+    my ($n) = @_;
+    my $buf = '';
+    while (length($buf) < $n) {
+        my $r = read($in, $buf, $n - length($buf), length($buf));
+        return undef unless $r;
+    }
+    return $buf;
+}
+
+my $sync = readn(4);
+unless (defined $sync) { logmsg('ERROR', 'Leere Eingabe'); exit 1; }
+my $syncLE = unpack('V', $sync);
+my $syncBE = unpack('N', $sync);
+my ($I, $ver);
+my %vers = (0x52615374 => 1, 0x52615332 => 2, 0x52615333 => 3);
+if    (exists $vers{$syncLE}) { $I = 'V'; $ver = $vers{$syncLE}; }
+elsif (exists $vers{$syncBE}) { $I = 'N'; $ver = $vers{$syncBE}; }
+else  { logmsg('ERROR', 'Kein CUPS-Raster (Sync-Wort unbekannt)'); exit 1; }
+
+my $ESC = "\x1b";
+my $FS  = "\x1c";
+# SPREAD[k][b]: Zeile k (0..7 von oben) mit Byte b -> 8 Spaltenbytes, Bit (0x80>>k)
+my @SPREAD;
+for my $k (0 .. 7) {
+    for my $b (0 .. 255) {
+        $SPREAD[$k][$b] = join '', map { chr((($b >> (7 - $_)) & 1) ? (0x80 >> $k) : 0) } 0 .. 7;
+    }
+}
+print $ESC . '@';                      # Drucker initialisieren
+print $ESC . 'U' . chr($unidir);       # Druckrichtung
+print $ESC . '3' . chr(24);            # Zeilenabstand 24/180"
+
+my $page = 0;
+while (1) {
+    my $hdr = readn(1796);
+    last unless defined $hdr && length($hdr) == 1796;
+    my $u = sub { unpack($I, substr($hdr, $_[0], 4)) };
+
+    my $xres   = $u->(276);
+    my $yres   = $u->(280);
+    my $width  = $u->(372);
+    my $height = $u->(376);
+    my $bpc    = $u->(384);
+    my $bpp    = $u->(388);
+    my $bpl    = $u->(392);
+    my $cspace = $u->(400);
+    $page++;
+    logmsg('INFO', "Seite $page: ${width}x$height, ${xres}x$yres dpi, $bpp bpp, Farbraum $cspace");
+    print STDERR "PAGE: $page 1\n";
+
+    if ($bpl <= 0 || $height <= 0) { logmsg('ERROR', 'Ungueltiger Seitenkopf'); exit 1; }
+
+    # --- Zeilen lesen ---
+    my @rows;
+    my $pixbytes = int(($bpp + 7) / 8); $pixbytes = 1 if $pixbytes < 1;
+    if ($ver == 2) {
+        my $y = 0;
+        while ($y < $height) {
+            my $rc = readn(1); last unless defined $rc;
+            my $rep = ord($rc) + 1;
+            my $line = '';
+            while (length($line) < $bpl) {
+                my $c = ord(readn(1));
+                if ($c < 128) {
+                    my $px = readn($pixbytes);
+                    $line .= $px x ($c + 1);
+                } else {
+                    my $n = 257 - $c;
+                    $line .= readn($n * $pixbytes);
+                }
+            }
+            $line = substr($line, 0, $bpl);
+            for (1 .. $rep) { last if $y >= $height; $rows[$y++] = $line; }
+        }
+    } else {
+        for my $y (0 .. $height - 1) {
+            my $line = readn($bpl);
+            last unless defined $line;
+            $rows[$y] = $line;
+        }
+    }
+
+    # --- Auf 1 Bit/Pixel (1 = schwarz) normieren ---
+    if ($bpp == 8 && $bpc == 8) {
+        my $white_is_high = ($cspace == 18 || $cspace == 0 || $cspace == 1); # W / sGray / RGB-aehnlich
+        for my $r (@rows) {
+            next unless defined $r;
+            my $bits = '';
+            my @v = unpack('C*', $r);
+            for my $x (0 .. $width - 1) {
+                my $black = $white_is_high ? ($v[$x] < 128) : ($v[$x] >= 128);
+                vec($bits, ($x & ~7) + 7 - ($x & 7), 1) = 1 if $black;
+            }
+            $r = $bits;
+        }
+    } elsif ($bpp == 1 && ($cspace == 18 || $cspace == 0)) {
+        # W: 1 = weiss -> invertieren
+        $_ = (defined $_ ? ~$_ : $_) for @rows;
+    } elsif ($bpp != 1) {
+        logmsg('ERROR', "Nicht unterstuetztes Rasterformat ($bpp bpp)");
+        exit 1;
+    }
+
+    # --- Horizontalen Versatz anwenden, auf Druckbreite beschneiden ---
+    my $maxcols = int($MAXDOTS * $xres / 180);
+    my $shift = int($hoff_mm / 25.4 * $xres + ($hoff_mm < 0 ? -0.5 : 0.5));
+    my $cols  = $width + $shift; $cols = $maxcols if $cols > $maxcols;
+    $cols = 0 if $cols < 0;
+    my $rowbytes = int(($cols + 7) / 8);
+    for my $r (@rows) {
+        $r = '' unless defined $r;
+        if ($shift != 0) {
+            my $b = unpack('B*', $r);
+            $b = $shift > 0 ? ('0' x $shift) . $b : substr($b, -$shift > length($b) ? length($b) : -$shift);
+            $r = pack('B*', $b);
+        }
+        $r = substr($r . ("\0" x $rowbytes), 0, $rowbytes);
+        # Bits jenseits von $cols loeschen
+        if ($cols % 8) { substr($r, -1, 1) = chr(ord(substr($r, -1, 1)) & (0xFF << (8 - $cols % 8)) & 0xFF); }
+    }
+
+    my $hi_x = ($xres >= 360);
+    my $hi_y = ($yres >= 360);
+    my $m    = $hi_x ? 40 : 39;
+    print $FS . '3' . chr(1) if $hi_y;   # LF = 1/360"
+
+    my $pending = 0;                      # Vorschub in 1/360"
+    my $feed = sub {
+        my $u = $pending;
+        while ($u >= 2) { my $k = $u >> 1; $k = 255 if $k > 255; print $ESC . 'J' . chr($k); $u -= 2 * $k; }
+        print "\n" if $u;
+        $pending = 0;
+    };
+    my $zero = "\0" x $rowbytes;
+
+    my $pass = sub {   # 24 Zeilen -> eine Druckkopf-Spur
+        my @r = @_;
+        my @g;
+        for my $grp (0 .. 2) {
+            my $acc = "\0" x ($rowbytes * 8);
+            for my $k (0 .. 7) {
+                my $row = $r[$grp * 8 + $k];
+                next if !defined $row || $row !~ /[^\0]/;
+                $acc |= join('', @{$SPREAD[$k]}[unpack('C*', $row)]);
+            }
+            push @g, substr($acc, 0, $cols);
+        }
+        my $data = join('', map { substr($g[0], $_, 1) . substr($g[1], $_, 1) . substr($g[2], $_, 1) } 0 .. $cols - 1);
+        $data =~ s/(?:\0\0\0)+$//;
+        return if $data eq '';
+        my $n = length($data) / 3;
+        if ($hi_x && $n >= 2) {
+            # keine benachbarten Punkte in einer Spur (wie Ghostscript necp6)
+            if ($n >= 3) {
+                my $A = substr($data, 0, 3 * ($n - 2));
+                my $B = substr($data, 3, 3 * ($n - 2));
+                my $C = substr($data, 6, 3 * ($n - 2));
+                substr($data, 0, 3 * ($n - 2)) = $A & ~(~$C & $B);
+            }
+            my $p = substr($data, 3 * ($n - 2), 3);
+            my $q = substr($data, 3 * ($n - 1), 3);
+            substr($data, 3 * ($n - 2), 3) = $p & ~$q;
+        }
+        $feed->();
+        print "\r" . $ESC . '*' . chr($m) . chr($n & 255) . chr($n >> 8) . $data . "\r";
+    };
+
+    my $bandrows = $hi_y ? 48 : 24;
+    my $bands = 0;
+    for (my $y0 = 0; $y0 < $height; $y0 += $bandrows) {
+        $bands++;
+        my @b = map { defined $rows[$y0 + $_] ? $rows[$y0 + $_] : $zero } 0 .. $bandrows - 1;
+        if (!grep { /[^\0]/ } @b) { $pending += 48; next; }
+        if ($hi_y) {
+            my @even = @b[grep { $_ % 2 == 0 } 0 .. 47];
+            my @odd  = @b[grep { $_ % 2 == 1 } 0 .. 47];
+            $pass->(@even);
+            $pending += 1;
+            $pass->(@odd);
+            $pending += 47;
+        } else {
+            $pass->(@b);
+            $pending += 48;
+        }
+    }
+
+    # --- Seitenende ---
+    if ($eject eq 'FormFeed') {
+        print "\x0c";
+        $pending = 0;
+    } else {
+        my $total = int($height * 360 / ($yres || 180) + 0.5);
+        $pending += $total - $bands * 48;
+        $pending = 0 if $pending < 0;
+        $feed->();
+    }
+    print $ESC . '3' . chr(24) if $hi_y;  # Zeilenabstand zuruecksetzen
+}
+
+print $ESC . '@';
+logmsg('INFO', "Fertig, $page Seite(n)");
+exit 0;
