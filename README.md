@@ -9,7 +9,7 @@ plus a PPD file.
 
 ## Features
 - Print from **any macOS app** via the standard print dialog
-- Print quality: **180×180**, **360×180** or **360×360 dpi**
+- Print quality: **180×180**, **360×180** or **360×360 dpi** (360 dpi with dot-gain corrected greyscale)
 - Paper sizes: A4, US Letter, continuous fanfold 8.5×12", 240 mm×12", 8.5×11"
 - Page end: exact page-length feed (continuous paper) or form feed (single sheets)
 - Bidirectional / unidirectional printing, horizontal offset adjustment
@@ -51,7 +51,7 @@ no questions asked.
 ## Settings
 In the print dialog scroll down to **Options → Printer Options** and click the
 **ⓘ** button on the right:
-*Print quality*, *Page end*, *Print direction*, *Horizontal offset*.
+*Druckqualitaet* (print quality), *Graustufen* (grey level, 360 dpi), *Seitenende* (page end), *Druckrichtung* (print direction), *Horizontaler Versatz* (horizontal offset).
 For 360×360 dpi, unidirectional printing gives the cleanest result.
 
 Set defaults permanently, e.g.:
@@ -77,9 +77,8 @@ paper feed via `ESC J n/180"`. For 360 dpi vertical it sets `FS 3 1` (LF = 1/360
 and prints each band in two interleaved passes, as Ghostscript's `necp6` driver does.
 
 ## Status
-180 dpi is tested on real hardware (NEC P6 Plus, USB-parallel adapter, macOS).
-360 dpi modes are verified with a printer-command emulator; real-hardware
-reports welcome – please open an issue.
+Tested on real hardware (NEC P6 Plus, USB-parallel adapter, macOS) at 180 and 360 dpi.
+Reports for other Pinwriter models welcome – please open an issue.
 
 ## License
 AGPL-3.0-or-later. The 360 dpi logic follows Ghostscript's `necp6` driver

@@ -45,6 +45,7 @@ if (defined $opt{NECHOffset} && $opt{NECHOffset} =~ /^(m?)(\d+)mm$/) {
     $hoff_mm = ($1 ? -1 : 1) * $2;
 }
 my $eject     = defined $opt{NECEject} ? $opt{NECEject} : 'Feed';
+my $gray      = defined $opt{NECGray} ? $opt{NECGray} : 'Normal';
 my $unidir    = (defined $opt{NECDirection} && $opt{NECDirection} eq 'Uni') ? 1 : 0;
 
 # ---- Eingabe -------------------------------------------------------------
@@ -141,16 +142,40 @@ while (1) {
 
     # --- Auf 1 Bit/Pixel (1 = schwarz) normieren ---
     if ($bpp == 8 && $bpc == 8) {
-        my $white_is_high = ($cspace == 18 || $cspace == 0 || $cspace == 1); # W / sGray / RGB-aehnlich
-        for my $r (@rows) {
+        # Graustufen selbst rastern (Bayer 8x8) mit Punktzuwachs-Korrektur:
+        # gewuenschte Schwaerzung f -> Punktanteil d = 1 - (1-f)^(1/k)
+        my $white_is_high = ($cspace == 18 || $cspace == 0 || $cspace == 1);
+        my $k = ($xres >= 360 && $yres >= 360) ? 3.5 : ($xres >= 360 || $yres >= 360) ? 2.0 : 1.0;
+        my %gf = (Light => 1.4, Normal => 1.0, Dark => 0.7);
+        $k *= $gf{$gray} || 1.0;
+        $k = 1.0 if $k < 1.0;
+        my @lvl;   # Byte -> Stufe 0..64
+        for my $v (0 .. 255) {
+            my $f = $white_is_high ? (255 - $v) / 255 : $v / 255;
+            my $d = 1 - (1 - $f) ** (1 / $k);
+            $lvl[$v] = int($d * 64 + 0.5);
+        }
+        my $white = $white_is_high ? "\xff" : "\x00";
+        # pro Schwelle t (0..63): Uebersetzung Byte -> \x01 (schwarz) / \x00
+        my @tsub;
+        for my $t (0 .. 63) {
+            my $to = join '', map { sprintf '\\x%02x', ($lvl[$_] > $t ? 1 : 0) } 0 .. 255;
+            $tsub[$t] = eval "sub { (my \$s = \$_[0]) =~ tr/\\x00-\\xff/$to/; \$s }" or die $@;
+        }
+        my @mask = map { my $p = $_; substr((("\0" x $p) . "\x01" . ("\0" x (7 - $p))) x (int($width / 8) + 1), 0, $width) } 0 .. 7;
+        my @B = ([0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],[12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],
+                 [3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],[15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]);
+        my $wrow = $white x $width;
+        for my $y (0 .. $#rows) {
+            my $r = $rows[$y];
             next unless defined $r;
-            my $bits = '';
-            my @v = unpack('C*', $r);
-            for my $x (0 .. $width - 1) {
-                my $black = $white_is_high ? ($v[$x] < 128) : ($v[$x] >= 128);
-                vec($bits, ($x & ~7) + 7 - ($x & 7), 1) = 1 if $black;
-            }
-            $r = $bits;
+            $r = substr($r, 0, $width);
+            if ($r eq $wrow) { $rows[$y] = "\0" x int(($width + 7) / 8); next; }
+            my $acc = "\0" x $width;
+            my $brow = $B[$y % 8];
+            for my $p (0 .. 7) { $acc |= ($tsub[$brow->[$p]]->($r) & $mask[$p]); }
+            $acc =~ tr/\x00\x01/01/;
+            $rows[$y] = pack('B*', $acc);
         }
     } elsif ($bpp == 1 && ($cspace == 18 || $cspace == 0)) {
         # W: 1 = weiss -> invertieren
